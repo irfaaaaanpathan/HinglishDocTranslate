@@ -85,15 +85,32 @@ This application is 100% static client-side HTML, CSS, and JavaScript. It deploy
 2. Connect your GitHub account and select repository: `irfaaaaanpathan/HinglishDocTranslate`.
 
 ### Step 4: Configure Settings
-Fill in the following simple details:
+Fill in the following details:
 - **Name**: `hinglishdoc-translate` (or any custom name)
 - **Branch**: `main`
-- **Root Directory**: *(leave blank or enter `. `)*
-- **Build Command**: *(leave blank / empty)*
-- **Publish Directory**: `.` *(or enter `./`)*
+- **Root Directory**: *(leave blank)*
+- **Build Command**: `node build.js` *(reads keys from Render environment and injects them)*
+- **Publish Directory**: `.` *(or `./`)*
 
-### Step 5: Click "Create Static Site"
-Render will instantly deploy your site and provide a free live HTTPS URL (e.g., `https://hinglishdoc-translate.onrender.com`).
+### Step 5: Add Your Gemini API Keys in the "Environment" Tab
+1. In your Render Static Site settings, go to the **"Environment"** tab on the left.
+2. Click **"Add Environment Variable"** and add your keys:
+   - `GEMINI_API_KEY_1`: `your_first_gemini_api_key`
+   - `GEMINI_API_KEY_2`: `your_second_gemini_api_key`
+   - `GEMINI_API_KEY_3`: `your_third_gemini_api_key`
+   - `GEMINI_API_KEY_4`: `your_fourth_gemini_api_key`
+   *(Or simply add one variable `GEMINI_API_KEYS` containing your comma-separated keys).*
+3. Click **"Save Changes"**. Render will re-deploy automatically with your keys loaded!
+
+---
+
+### Alternative: Deploy as a Render Web Service (Backend Proxy)
+If you prefer a Node.js backend where the keys are completely hidden from the browser network tab:
+1. On Render, click **"New +"** &rarr; **"Web Service"**.
+2. Connect `irfaaaaanpathan/HinglishDocTranslate`.
+3. Set **Start Command**: `node server.js`.
+4. Add your `GEMINI_API_KEY_1..4` in the **Environment** tab.
+5. Deploy! The server handles translation calls securely via `/api/translate`.
 
 ---
 

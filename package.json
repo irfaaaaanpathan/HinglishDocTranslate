@@ -1,0 +1,23 @@
+{
+  "name": "hinglishdoc-studio",
+  "version": "1.0.0",
+  "description": "Layout-Preserving DOCX & PDF Document Translator into Natural Hinglish",
+  "main": "server.js",
+  "scripts": {
+    "build": "node build.js",
+    "start": "node server.js"
+  },
+  "keywords": [
+    "hinglish",
+    "translator",
+    "gemini",
+    "docx",
+    "pdf",
+    "document-translation"
+  ],
+  "author": "Irfan Pathan",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

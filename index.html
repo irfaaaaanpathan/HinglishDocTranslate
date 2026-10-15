@@ -799,14 +799,14 @@
                 let rightActionsHtml = '';
                 if (session.isTranslated) {
                     rightActionsHtml += `
-                        <button onclick="event.stopPropagation(); downloadSessionDocument('${session.id}')" class="w-6 h-6 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center shadow-sm transition-transform hover:scale-105" title="Download Translated ${session.fileName}">
+                        <button data-action="download" data-session-id="${session.id}" onclick="event.stopPropagation(); downloadSessionDocument('${session.id}')" class="w-6 h-6 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center shadow-sm transition-transform hover:scale-105" title="Download Translated ${session.fileName}">
                             <i class="fa-solid fa-download text-[10px]"></i>
                         </button>
                     `;
                 }
                 if (!session.isTranslating && !session.isParsing) {
                     rightActionsHtml += `
-                        <button onclick="deleteChatSession(event, '${session.id}')" class="opacity-0 group-hover:opacity-100 w-6 h-6 rounded-lg hover:bg-rose-100 dark:hover:bg-rose-950/60 text-slate-400 hover:text-rose-500 flex items-center justify-center transition-all" title="Delete Chat">
+                        <button data-action="delete" data-session-id="${session.id}" onclick="deleteChatSession(event, '${session.id}')" class="opacity-0 group-hover:opacity-100 w-6 h-6 rounded-lg hover:bg-rose-100 dark:hover:bg-rose-950/60 text-slate-400 hover:text-rose-500 flex items-center justify-center transition-all" title="Delete Chat">
                             <i class="fa-solid fa-trash-can text-[10px]"></i>
                         </button>
                     `;
@@ -1081,6 +1081,40 @@
                 if (appState.fileType === 'pdf') {
                     applyZoomToPreview('original');
                     applyZoomToPreview('translated');
+                }
+            });
+
+            // Event delegation on Chat History List so clicks are never dropped during live progress
+            const chatList = document.getElementById('chatHistoryList');
+            if (chatList) {
+                chatList.addEventListener('click', (e) => {
+                    const delBtn = e.target.closest('[data-action="delete"]');
+                    if (delBtn) {
+                        e.stopPropagation();
+                        const sId = delBtn.getAttribute('data-session-id');
+                        if (sId) deleteChatSession(e, sId);
+                        return;
+                    }
+                    const dlBtn = e.target.closest('[data-action="download"]');
+                    if (dlBtn) {
+                        e.stopPropagation();
+                        const sId = dlBtn.getAttribute('data-session-id');
+                        if (sId) downloadSessionDocument(sId);
+                        return;
+                    }
+                    const chatRow = e.target.closest('[data-session-id]');
+                    if (chatRow) {
+                        const sId = chatRow.getAttribute('data-session-id');
+                        if (sId) selectChatSession(sId);
+                    }
+                });
+            }
+
+            // Sync workspace on tab visibility change (e.g. switching browser tabs)
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible') {
+                    renderChatSidebar();
+                    syncWorkspaceToActiveSession();
                 }
             });
 
