@@ -1,0 +1,1951 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HinglishDoc Studio — Layout-Preserving DOCX & PDF Translator</title>
+        <!-- Optional local config for Gemini API keys (git-ignored) -->
+    <script src="config.js" onerror="/* config.js is optional */"></script>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter & JetBrains Mono -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <!-- JSZip for in-place DOCX XML manipulation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <!-- PDF.js for PDF rendering and coordinate extraction -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <!-- jsPDF for exporting layout-preserved translated PDFs -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                        }
+                    }
+                }
+            }
+        };
+    </script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Custom Scrollbars */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        .dark ::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.4);
+        }
+        .dark ::-webkit-scrollbar-thumb {
+            background: rgba(59, 130, 246, 0.4);
+            border-radius: 9999px;
+        }
+        .dark ::-webkit-scrollbar-thumb:hover {
+            background: rgba(59, 130, 246, 0.7);
+        }
+        :not(.dark) ::-webkit-scrollbar-track {
+            background: rgba(241, 245, 249, 0.8);
+        }
+        :not(.dark) ::-webkit-scrollbar-thumb {
+            background: rgba(203, 213, 225, 1);
+            border-radius: 9999px;
+        }
+        :not(.dark) ::-webkit-scrollbar-thumb:hover {
+            background: rgba(148, 163, 184, 1);
+        }
+        .doc-page-shadow {
+            box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.15), 0 0 1px 1px rgba(0, 0, 0, 0.05);
+        }
+        .dark .doc-page-shadow {
+            box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.45), 0 0 1px 1px rgba(255, 255, 255, 0.08);
+        }
+        /* Smooth Circular Progress Ring Transitions */
+        .progress-ring-circle {
+            transition: stroke-dashoffset 0.3s ease-out;
+            transform: rotate(-90deg);
+            transform-origin: 50% 50%;
+        }
+    </style>
+</head>
+
+<body class="bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 h-screen overflow-hidden flex flex-col transition-colors duration-200">
+
+    <!-- Top Navigation Bar -->
+    <header class="border-b border-slate-200 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md z-40 shrink-0">
+        <div class="px-4 sm:px-6 h-15 py-2.5 flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <!-- Sidebar Toggle Button -->
+                <button onclick="toggleChatSidebar()" class="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 transition-colors" title="Toggle Chat History Sidebar">
+                    <i class="fa-solid fa-bars-staggered text-sm"></i>
+                </button>
+                <div class="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-md shadow-blue-500/20">
+                    <i class="fa-solid fa-file-lines text-base"></i>
+                </div>
+                <div>
+                    <div class="flex items-center gap-2">
+                        <h1 class="font-bold text-base sm:text-lg tracking-tight">HinglishDoc <span class="text-blue-600 dark:text-blue-400">Studio</span></h1>
+                        <span class="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-300 border border-blue-200 dark:border-blue-800/60 hidden sm:inline-block">Multi-Chat Workspace</span>
+                    </div>
+                    <p class="text-[11px] text-slate-500 dark:text-slate-400 hidden md:block">Concurrent DOCX & PDF Hinglish Translation with Persistent History</p>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-2.5">
+                <!-- API Key Settings Button -->
+                <button onclick="openApiKeyModal()" class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/60 hover:bg-amber-100 dark:hover:bg-amber-900/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60 text-xs font-semibold transition-all" title="Configure Gemini API Keys">
+                    <i class="fa-solid fa-key text-[11px]"></i>
+                    <span id="headerApiKeyCount">API Keys</span>
+                </button>
+
+                <!-- Quick New Chat Button in Header -->
+                <button onclick="createNewChatSession()" class="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-600 dark:text-blue-300 border border-blue-200 dark:border-blue-800/60 text-xs font-semibold transition-all">
+                    <i class="fa-solid fa-plus"></i>
+                    <span>New Chat</span>
+                </button>
+
+                <!-- Navigation Tabs -->
+                <div class="flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
+                    <button id="tabBtnWorkspace" onclick="switchTab('workspace')" class="px-3 py-1.5 rounded-lg text-xs font-medium transition-all bg-blue-600 text-white shadow-sm">
+                        <i class="fa-solid fa-clone mr-1.5"></i>Studio Workspace
+                    </button>
+                    <button id="tabBtnArchitecture" onclick="switchTab('architecture')" class="px-3 py-1.5 rounded-lg text-xs font-medium transition-all text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white">
+                        <i class="fa-brands fa-python mr-1.5"></i>Python Code
+                    </button>
+                </div>
+
+                <!-- Light / Dark Mode Toggle Button -->
+                <button onclick="toggleDarkMode()" class="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 transition-colors" title="Toggle Light/Dark Mode">
+                    <i id="darkModeIcon" class="fa-solid fa-moon text-sm"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- App Body Container: Left Chat History Sidebar + Right Main Content -->
+    <div class="flex-1 flex overflow-hidden relative">
+
+        <!-- Left Sidebar: ChatGPT / Gemini Style Chat History -->
+        <aside id="chatSidebar" class="w-72 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col shrink-0 transition-all duration-200 z-30">
+            <!-- New Chat CTA -->
+            <div class="p-3.5 border-b border-slate-200 dark:border-slate-800">
+                <button onclick="createNewChatSession()" class="w-full py-2.5 px-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs sm:text-sm shadow-sm shadow-blue-500/15 transition-all flex items-center justify-between group">
+                    <span class="flex items-center gap-2.5">
+                        <i class="fa-solid fa-plus text-xs bg-white/20 w-5 h-5 rounded-lg flex items-center justify-center"></i>
+                        <span>New Translation Chat</span>
+                    </span>
+                    <span class="text-[10px] font-mono opacity-75 group-hover:opacity-100 bg-blue-700/60 px-1.5 py-0.5 rounded">New PDF/DOCX</span>
+                </button>
+            </div>
+
+            <!-- API Key Rotation Status Pill -->
+            <button onclick="openApiKeyModal()" class="w-full px-3.5 py-2 bg-slate-50 hover:bg-slate-100 dark:bg-slate-950/60 dark:hover:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-[11px] flex items-center justify-between transition-colors text-left" title="Click to view or edit Gemini API keys">
+                <span class="flex items-center gap-1.5 font-medium text-slate-600 dark:text-slate-400">
+                    <i class="fa-solid fa-key text-amber-500 text-[10px]"></i>
+                    <span>Key Rotation</span>
+                </span>
+                <span id="sidebarApiKeyBadge" class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 font-semibold border border-emerald-300/40">API Keys</span>
+            </button>
+
+            <!-- Active Background Jobs Indicator Banner (Shown when multiple or background jobs run) -->
+            <div id="sidebarActiveBanner" class="hidden px-3.5 py-2 bg-blue-50/80 dark:bg-blue-950/40 border-b border-blue-200/70 dark:border-blue-800/50 text-[11px] text-blue-700 dark:text-blue-300 flex items-center justify-between">
+                <span class="flex items-center gap-1.5 font-medium">
+                    <span class="w-2 h-2 rounded-full bg-blue-600 dark:bg-blue-400 animate-ping"></span>
+                    <span id="sidebarActiveCountText">1 translation running</span>
+                </span>
+                <span class="font-mono text-[10px] opacity-80">Live</span>
+            </div>
+
+            <!-- Chat History List Header -->
+            <div class="px-4 pt-3 pb-1.5 flex items-center justify-between">
+                <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Translation Chats</span>
+                <span id="chatCountBadge" class="text-[10px] font-mono text-slate-400 dark:text-slate-500">1 session</span>
+            </div>
+
+            <!-- Scrollable Chat Sessions List -->
+            <div id="chatHistoryList" class="flex-1 overflow-y-auto px-2.5 py-1.5 space-y-1">
+                <!-- Populated dynamically via renderChatSidebar() -->
+            </div>
+
+            <!-- Sidebar Footer Tip -->
+            <div class="p-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-950/40 text-[11px] text-slate-500 dark:text-slate-400 flex items-start gap-2">
+                <i class="fa-solid fa-layer-group text-blue-500 mt-0.5"></i>
+                <span>Start a <strong>New Chat</strong> anytime while a file is translating. Past files stay ready to download.</span>
+            </div>
+        </aside>
+
+        <!-- Center & Right Main Area -->
+        <div class="flex-1 flex flex-col overflow-y-auto">
+
+            <!-- Main Studio Workspace -->
+            <main id="viewWorkspace" class="flex-1 max-w-[1440px] w-full mx-auto px-4 sm:px-6 py-5 flex flex-col gap-5">
+
+                <!-- Initial Upload Dropzone (Shown when current chat session has no file loaded) -->
+                <section id="uploadSection" class="bg-white dark:bg-slate-900 border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-blue-500 dark:hover:border-blue-500 rounded-2xl p-8 sm:p-12 text-center transition-all cursor-pointer group shadow-sm my-auto"
+                    onclick="document.getElementById('fileInput').click()"
+                    ondragover="handleDragOver(event)"
+                    ondragleave="handleDragLeave(event)"
+                    ondrop="handleDrop(event)">
+                    
+                    <input type="file" id="fileInput" accept=".docx,.pdf" class="hidden" onchange="handleFileSelect(event)">
+                    
+                    <div class="max-w-xl mx-auto flex flex-col items-center gap-4">
+                        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-medium">
+                            <i class="fa-regular fa-comments text-blue-500"></i>
+                            <span id="uploadChatSessionLabel">Session #1 — Ready for Document</span>
+                        </div>
+
+                        <div class="w-16 h-16 rounded-2xl bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800 flex items-center justify-center text-blue-600 dark:text-blue-400 group-hover:scale-105 transition-transform shadow-sm">
+                            <i class="fa-solid fa-cloud-arrow-up text-2xl"></i>
+                        </div>
+                        <div>
+                            <h2 class="text-xl sm:text-2xl font-bold tracking-tight mb-1">Select PDF or WORD document for this Chat</h2>
+                            <p class="text-sm text-slate-500 dark:text-slate-400">
+                                Drop a `.docx` or `.pdf` file to translate into natural Hinglish with 100% layout preservation. You can open a <strong>New Chat</strong> on the left to translate multiple files at once!
+                            </p>
+                        </div>
+                        
+                        <div class="flex flex-wrap items-center justify-center gap-3 mt-2">
+                            <button class="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm shadow-md shadow-blue-500/20 transition-all flex items-center gap-2">
+                                <i class="fa-solid fa-folder-open"></i>
+                                <span>Browse Computer</span>
+                            </button>
+                            <button onclick="event.stopPropagation(); loadSampleDocx();" class="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-medium text-sm transition-all flex items-center gap-2 border border-slate-200 dark:border-slate-700">
+                                <i class="fa-solid fa-file-word text-blue-500"></i>
+                                <span>Try Sample DOCX</span>
+                            </button>
+                            <button onclick="event.stopPropagation(); loadSamplePdf();" class="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-medium text-sm transition-all flex items-center gap-2 border border-slate-200 dark:border-slate-700">
+                                <i class="fa-solid fa-file-pdf text-rose-500"></i>
+                                <span>Try Multi-Page Sample PDF</span>
+                            </button>
+                        </div>
+
+                        <div class="flex flex-wrap items-center justify-center gap-6 mt-4 text-xs text-slate-400 dark:text-slate-500">
+                            <span class="flex items-center gap-1.5"><i class="fa-solid fa-clock-rotate-left text-blue-500"></i> Saved in Chat History</span>
+                            <span class="flex items-center gap-1.5"><i class="fa-solid fa-stopwatch text-emerald-500"></i> Real-Time ETA Progress</span>
+                            <span class="flex items-center gap-1.5"><i class="fa-solid fa-bolt text-amber-500"></i> Background Multi-File Support</span>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Active Document Studio Workspace (Shown when current chat session has a file loaded) -->
+                <div id="activeWorkspace" class="hidden grid grid-cols-1 lg:grid-cols-12 gap-5 flex-1 items-start">
+                    
+                    <!-- Center Column: Side-by-Side Comparison Viewers -->
+                    <div class="lg:col-span-8 flex flex-col gap-4">
+                        
+                        <!-- Dual Document Viewers Container -->
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            
+                            <!-- Original Document Pane -->
+                            <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm flex flex-col">
+                                <div class="px-4 py-2.5 bg-slate-50 dark:bg-slate-900/80 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2">
+                                    <div class="flex items-center gap-2">
+                                        <span class="w-2.5 h-2.5 rounded-full bg-slate-400"></span>
+                                        <span class="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">Original Document</span>
+                                    </div>
+                                    <!-- Zoom Controls for Original -->
+                                    <div class="flex items-center gap-1 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg p-0.5 text-xs">
+                                        <button onclick="changeZoom('original', -0.15)" class="w-6 h-6 rounded hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-300" title="Zoom Out">
+                                            <i class="fa-solid fa-minus text-[10px]"></i>
+                                        </button>
+                                        <button onclick="resetZoom('original')" id="zoomBadgeOriginal" class="px-2 py-0.5 font-mono text-[11px] text-slate-600 dark:text-slate-300 font-medium">100%</button>
+                                        <button onclick="changeZoom('original', 0.15)" class="w-6 h-6 rounded hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-300" title="Zoom In">
+                                            <i class="fa-solid fa-plus text-[10px]"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div id="originalScrollPane" class="p-4 bg-slate-100/70 dark:bg-slate-950/60 flex-1 overflow-auto max-h-[680px] flex justify-center items-start">
+                                    <div id="originalPreviewContainer" class="w-full max-w-[560px] bg-white text-slate-900 rounded-lg p-6 doc-page-shadow min-h-[480px]">
+                                        <!-- Rendered Original Content -->
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Hinglish Translated Pane -->
+                            <div class="bg-white dark:bg-slate-900 border border-blue-500/40 dark:border-blue-500/50 rounded-2xl overflow-hidden shadow-sm flex flex-col">
+                                <div class="px-4 py-2.5 bg-blue-50/60 dark:bg-blue-950/30 border-b border-blue-200 dark:border-blue-800/40 flex items-center justify-between gap-2">
+                                    <div class="flex items-center gap-2">
+                                        <span class="w-2.5 h-2.5 rounded-full bg-blue-600 dark:bg-blue-400 animate-pulse"></span>
+                                        <span class="text-xs font-bold uppercase tracking-wider text-blue-700 dark:text-blue-300">Hinglish Translated</span>
+                                    </div>
+                                    <!-- Zoom Controls for Translated -->
+                                    <div class="flex items-center gap-1 bg-white dark:bg-slate-950 border border-blue-200 dark:border-blue-900 rounded-lg p-0.5 text-xs">
+                                        <button onclick="changeZoom('translated', -0.15)" class="w-6 h-6 rounded hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center text-blue-600 dark:text-blue-300" title="Zoom Out">
+                                            <i class="fa-solid fa-minus text-[10px]"></i>
+                                        </button>
+                                        <button onclick="resetZoom('translated')" id="zoomBadgeTranslated" class="px-2 py-0.5 font-mono text-[11px] text-blue-700 dark:text-blue-300 font-medium">100%</button>
+                                        <button onclick="changeZoom('translated', 0.15)" class="w-6 h-6 rounded hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center text-blue-600 dark:text-blue-300" title="Zoom In">
+                                            <i class="fa-solid fa-plus text-[10px]"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div id="translatedScrollPane" class="p-4 bg-slate-100/70 dark:bg-slate-950/60 flex-1 overflow-auto max-h-[680px] flex justify-center items-start">
+                                    <div id="translatedPreviewContainer" class="w-full max-w-[560px] bg-white text-slate-900 rounded-lg p-6 doc-page-shadow min-h-[480px]">
+                                        <!-- Rendered Translated Content -->
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+
+                    <!-- Right-Hand iLovePDF Style Control Sidebar -->
+                    <div class="lg:col-span-4 flex flex-col gap-4">
+                        
+                        <!-- File Summary Card -->
+                        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-sm">
+                            <div class="flex items-center justify-between mb-3">
+                                <div class="flex items-center gap-3 min-w-0">
+                                    <div id="fileTypeIcon" class="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800 flex items-center justify-center text-blue-600 dark:text-blue-400 text-lg shrink-0">
+                                        <i class="fa-solid fa-file-word"></i>
+                                    </div>
+                                    <div class="overflow-hidden">
+                                        <h4 id="fileNameDisplay" class="font-bold text-sm truncate">document.docx</h4>
+                                        <div class="flex items-center gap-1.5 mt-0.5">
+                                            <span id="fileBadge" class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">DOCX XML Engine</span>
+                                            <span id="sessionKeyBadge" class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border border-emerald-300/40 font-semibold" title="Assigned round-robin key">Gemini Key #1</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <button onclick="createNewChatSession()" class="text-xs px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-blue-950/50 text-slate-600 dark:text-slate-300 hover:text-blue-600 transition-colors font-medium shrink-0" title="Start Another File in New Chat">
+                                    <i class="fa-solid fa-plus mr-1"></i>New Chat
+                                </button>
+                            </div>
+                            <p id="docStatsDisplay" class="text-xs text-slate-500 dark:text-slate-400 border-t border-slate-100 dark:border-slate-800 pt-3">
+                                Scanning paragraphs, tables, and embedded media...
+                            </p>
+                        </div>
+
+                        <!-- Real-Time Translation Progress & ETA Box -->
+                        <div id="progressContainer" class="hidden bg-white dark:bg-slate-900 border border-blue-500/40 dark:border-blue-500/40 rounded-2xl p-4 sm:p-5 shadow-sm flex-col gap-3">
+                            <div class="flex items-center justify-between gap-2">
+                                <span id="progressStatusText" class="text-blue-600 dark:text-blue-400 text-xs font-semibold flex items-center gap-2">
+                                    <i class="fa-solid fa-circle-notch fa-spin"></i> Translating layout nodes...
+                                </span>
+                                <span id="progressPercentText" class="font-mono text-sm font-bold text-blue-600 dark:text-blue-400">0%</span>
+                            </div>
+
+                            <!-- Smooth Animated Progress Bar -->
+                            <div class="w-full h-2.5 bg-slate-100 dark:bg-slate-950 rounded-full overflow-hidden border border-slate-200 dark:border-slate-800">
+                                <div id="progressBarFill" class="h-full bg-gradient-to-r from-blue-600 to-indigo-500 transition-all duration-300 rounded-full" style="width: 0%"></div>
+                            </div>
+
+                            <!-- Real-Time ETA & Elapsed Metrics Row -->
+                            <div class="grid grid-cols-2 gap-2 pt-1">
+                                <div class="bg-slate-50 dark:bg-slate-950/80 border border-slate-200/80 dark:border-slate-800 rounded-xl px-3 py-2 flex flex-col">
+                                    <span class="text-[10px] uppercase tracking-wider text-slate-400 dark:text-slate-500 font-semibold">Expected Time Left</span>
+                                    <span id="progressEtaText" class="font-mono text-xs sm:text-sm font-bold text-amber-600 dark:text-amber-400 mt-0.5 flex items-center gap-1.5">
+                                        <i class="fa-regular fa-clock text-[11px]"></i>
+                                        <span>Calculating...</span>
+                                    </span>
+                                </div>
+                                <div class="bg-slate-50 dark:bg-slate-950/80 border border-slate-200/80 dark:border-slate-800 rounded-xl px-3 py-2 flex flex-col">
+                                    <span class="text-[10px] uppercase tracking-wider text-slate-400 dark:text-slate-500 font-semibold">Real-Time Speed</span>
+                                    <span id="progressElapsedText" class="font-mono text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-300 mt-0.5">
+                                        0s elapsed
+                                    </span>
+                                </div>
+                            </div>
+
+                            <!-- Concurrent Translation Tip inside Progress Box -->
+                            <div id="concurrentHintBanner" class="text-[11px] bg-blue-50/70 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 rounded-xl px-3 py-2 border border-blue-200/60 dark:border-blue-800/40 flex items-center justify-between gap-2">
+                                <span><i class="fa-solid fa-sparkles mr-1"></i>Want to translate another file simultaneously?</span>
+                                <button onclick="createNewChatSession()" class="underline font-bold shrink-0 hover:text-blue-800 dark:hover:text-blue-200">+ New Chat</button>
+                            </div>
+                        </div>
+
+                        <!-- Translation Settings Box (iLovePDF Style) -->
+                        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-sm flex flex-col gap-4">
+                            <h3 class="font-bold text-xs uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                                <i class="fa-solid fa-sliders text-blue-600 dark:text-blue-400"></i>
+                                <span>Translation Settings</span>
+                            </h3>
+
+                            <!-- Tone Selector -->
+                            <div class="flex flex-col gap-1.5">
+                                <label for="hinglishTone" class="text-xs font-semibold text-slate-600 dark:text-slate-400">Hinglish Vocabulary & Tone</label>
+                                <select id="hinglishTone" onchange="updateSessionTone(this.value)" class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs sm:text-sm text-slate-800 dark:text-slate-200 focus:outline-none focus:border-blue-500">
+                                    <option value="natural">Balanced Hinglish (Natural everyday mix)</option>
+                                    <option value="corporate">Professional / Corporate (Keeps business terms in English)</option>
+                                    <option value="conversational">Simple Conversational (Easy explanation tone)</option>
+                                </select>
+                            </div>
+
+                            <!-- Zoom & Sync Options -->
+                            <div class="flex flex-col gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                                <div class="flex items-center justify-between text-xs font-semibold text-slate-600 dark:text-slate-400">
+                                    <span>Master Zoom Controls</span>
+                                    <div class="flex items-center gap-1">
+                                        <button onclick="changeZoom('both', -0.15)" class="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700">-</button>
+                                        <button onclick="resetZoom('both')" class="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 font-mono">100%</button>
+                                        <button onclick="changeZoom('both', 0.15)" class="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700">+</button>
+                                    </div>
+                                </div>
+                                <div class="flex items-center justify-between text-xs pt-1">
+                                    <label class="flex items-center gap-2 cursor-pointer select-none text-slate-600 dark:text-slate-400">
+                                        <input type="checkbox" id="chkSyncZoom" checked onchange="toggleSyncZoom(this.checked)" class="rounded border-slate-300 dark:border-slate-700 text-blue-600 focus:ring-0">
+                                        <span>Link Both Panes Zoom</span>
+                                    </label>
+                                    <label class="flex items-center gap-2 cursor-pointer select-none text-slate-600 dark:text-slate-400">
+                                        <input type="checkbox" id="chkSyncScroll" checked onchange="toggleSyncScroll(this.checked)" class="rounded border-slate-300 dark:border-slate-700 text-blue-600 focus:ring-0">
+                                        <span>Sync Scroll</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Big Action Buttons (iLovePDF Style) -->
+                        <div class="flex flex-col gap-3">
+                            <button id="btnTranslateDoc" onclick="translateCurrentDocument()" class="w-full py-3.5 px-6 rounded-2xl bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 dark:disabled:bg-blue-900 text-white font-bold text-sm sm:text-base shadow-lg shadow-blue-500/25 transition-all flex items-center justify-center gap-2.5">
+                                <i class="fa-solid fa-bolt"></i>
+                                <span id="translateBtnLabel">Translate to Hinglish</span>
+                            </button>
+
+                            <button id="btnDownloadDoc" onclick="downloadTranslatedDocument()" disabled class="w-full py-3.5 px-6 rounded-2xl bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-200 dark:disabled:bg-slate-800 disabled:text-slate-400 dark:disabled:text-slate-600 disabled:shadow-none text-white font-bold text-sm sm:text-base shadow-lg shadow-emerald-600/20 transition-all flex items-center justify-center gap-2.5">
+                                <i class="fa-solid fa-download"></i>
+                                <span id="downloadBtnLabel">Download Hinglish File</span>
+                            </button>
+                        </div>
+
+                    </div>
+
+                </div>
+            </main>
+
+            <!-- Secondary Tab: Python Backend Reference Code -->
+            <section id="viewArchitecture" class="hidden flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-col gap-6">
+    <!-- Notification Toast Container -->
+    
+    <!-- Gemini API Key Settings Modal -->
+    <div id="apiKeyModal" class="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm hidden items-center justify-center p-4">
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl flex flex-col gap-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-9 h-9 rounded-xl bg-amber-100 dark:bg-amber-950/70 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+                        <i class="fa-solid fa-key text-base"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-sm sm:text-base">Gemini API Key Pool</h3>
+                        <p class="text-[11px] text-slate-500 dark:text-slate-400">Configure 1 to 4 keys for automatic chat round-robin & failover</p>
+                    </div>
+                </div>
+                <button onclick="closeApiKeyModal()" class="w-8 h-8 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                    <i class="fa-solid fa-xmark text-sm"></i>
+                </button>
+            </div>
+
+            <p class="text-xs text-slate-500 dark:text-slate-400">
+                Each new chat rotates through your keys (Key 1 &rarr; 2 &rarr; 3 &rarr; 4 &rarr; 1). Keys are saved securely in your browser's LocalStorage and are <strong>never</strong> sent to any server other than official Google Gemini endpoints.
+            </p>
+
+            <div class="space-y-3 text-xs">
+                <div>
+                    <label class="font-semibold block mb-1 text-slate-700 dark:text-slate-300">1st API Key (Primary)</label>
+                    <input type="password" id="inputApiKey1" placeholder="Paste Gemini API Key 1..." class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 font-mono text-xs focus:outline-none focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="font-semibold block mb-1 text-slate-700 dark:text-slate-300">2nd API Key (Optional)</label>
+                    <input type="password" id="inputApiKey2" placeholder="Paste Gemini API Key 2..." class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 font-mono text-xs focus:outline-none focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="font-semibold block mb-1 text-slate-700 dark:text-slate-300">3rd API Key (Optional)</label>
+                    <input type="password" id="inputApiKey3" placeholder="Paste Gemini API Key 3..." class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 font-mono text-xs focus:outline-none focus:border-blue-500">
+                </div>
+                <div>
+                    <label class="font-semibold block mb-1 text-slate-700 dark:text-slate-300">4th API Key (Optional)</label>
+                    <input type="password" id="inputApiKey4" placeholder="Paste Gemini API Key 4..." class="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 font-mono text-xs focus:outline-none focus:border-blue-500">
+                </div>
+            </div>
+
+            <div class="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800 text-[11px] text-slate-500">
+                <span class="flex items-center gap-1.5"><i class="fa-solid fa-shield-halved text-emerald-500"></i> Stored in Browser LocalStorage</span>
+                <div class="flex items-center gap-2">
+                    <button onclick="closeApiKeyModal()" class="px-3.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 font-medium">Cancel</button>
+                    <button onclick="saveApiKeysFromModal()" class="px-4 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-sm">Save Keys</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="toastContainer" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none"></div>
+
+    <script>
+        if (window.pdfjsLib) {
+            window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        }
+
+        // Dynamic Gemini API Key Manager (Loads from localStorage, window.CONFIG, or UI Modal)
+        function getGeminiApiKeys() {
+            try {
+                const stored = localStorage.getItem('HINGLISH_GEMINI_API_KEYS');
+                if (stored) {
+                    const parsed = JSON.parse(stored);
+                    if (Array.isArray(parsed)) {
+                        const valid = parsed.map(k => (k || '').trim()).filter(Boolean);
+                        if (valid.length > 0) return valid;
+                    }
+                }
+            } catch (e) {}
+            if (window.CONFIG && Array.isArray(window.CONFIG.GEMINI_API_KEYS)) {
+                const valid = window.CONFIG.GEMINI_API_KEYS.map(k => (k || '').trim()).filter(Boolean);
+                if (valid.length > 0) return valid;
+            }
+            return [];
+        }
+
+        function saveGeminiApiKeys(keysArray) {
+            const valid = keysArray.map(k => (k || '').trim()).filter(Boolean);
+            localStorage.setItem('HINGLISH_GEMINI_API_KEYS', JSON.stringify(valid));
+            updateApiKeyBadgeUI();
+            return valid;
+        }
+
+        function updateApiKeyBadgeUI() {
+            const keys = getGeminiApiKeys();
+            const count = keys.length;
+            const badge = document.getElementById('sidebarApiKeyBadge');
+            const headerCount = document.getElementById('headerApiKeyCount');
+            if (badge) {
+                if (count > 0) {
+                    badge.textContent = `${count} Key${count > 1 ? 's' : ''} (1→${count})`;
+                    badge.className = 'text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 font-semibold border border-emerald-300/40';
+                } else {
+                    badge.textContent = 'Add API Keys';
+                    badge.className = 'text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-950/70 text-amber-700 dark:text-amber-300 font-semibold border border-amber-300/40';
+                }
+            }
+            if (headerCount) {
+                headerCount.textContent = count > 0 ? `Keys (${count})` : 'API Keys';
+            }
+        }
+
+        function openApiKeyModal() {
+            const keys = getGeminiApiKeys();
+            document.getElementById('inputApiKey1').value = keys[0] || '';
+            document.getElementById('inputApiKey2').value = keys[1] || '';
+            document.getElementById('inputApiKey3').value = keys[2] || '';
+            document.getElementById('inputApiKey4').value = keys[3] || '';
+            const modal = document.getElementById('apiKeyModal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeApiKeyModal() {
+            const modal = document.getElementById('apiKeyModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        function saveApiKeysFromModal() {
+            const k1 = document.getElementById('inputApiKey1').value.trim();
+            const k2 = document.getElementById('inputApiKey2').value.trim();
+            const k3 = document.getElementById('inputApiKey3').value.trim();
+            const k4 = document.getElementById('inputApiKey4').value.trim();
+            const keys = [k1, k2, k3, k4].filter(Boolean);
+            saveGeminiApiKeys(keys);
+            closeApiKeyModal();
+            showToast(keys.length > 0 ? `Saved ${keys.length} Gemini API Key(s) to local storage!` : 'Cleared API keys.', 'success');
+        }
+
+        // Multi-Session Chat Manager (supports concurrent translations & persistent downloads)
+        const chatStore = {
+            sessions: [],
+            activeSessionId: null,
+            counter: 1
+        };
+
+        function createSessionObject() {
+            const num = chatStore.counter++;
+            const keys = getGeminiApiKeys();
+            const hasKeys = keys.length > 0;
+            // Round-robin rotation: 1st chat -> Key 1, 2nd -> Key 2, 3rd -> Key 3, 4th -> Key 4, 5th -> Key 1...
+            const keyIndex = hasKeys ? ((num - 1) % keys.length) : 0;
+            const keySlot = keyIndex + 1;
+            const assignedKey = hasKeys ? keys[keyIndex] : '';
+
+            return {
+                id: 'chat_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+                sessionNumber: num,
+                keySlot: keySlot,
+                apiKey: assignedKey,
+                title: `Chat #${num}`,
+                createdAt: new Date(),
+                fileType: null, // 'docx' | 'pdf' | null
+                fileName: '',
+                docxZip: null,
+                docxXmlDoc: null,
+                docxMediaUrls: {},
+                docxTranslatableNodes: [],
+                pdfDoc: null,
+                pdfPreviewScale: 2.0,
+                pdfPagesData: [],
+                isParsing: false,
+                isTranslated: false,
+                isTranslating: false,
+                tone: 'natural',
+                zoomOriginal: 1.0,
+                zoomTranslated: 1.0,
+                syncZoom: true,
+                syncScroll: true,
+                statsText: 'Scanning paragraphs, tables, and embedded media...',
+                progress: {
+                    percent: 0,
+                    completedItems: 0,
+                    totalItems: 0,
+                    statusText: 'Ready',
+                    startTime: null,
+                    avgMsPerItem: 130, // Initial heuristic (~130ms per text block) refined dynamically in real-time
+                    etaSeconds: null,
+                    elapsedSeconds: 0,
+                    timerInterval: null
+                }
+            };
+        }
+
+        function getActiveSession() {
+            return chatStore.sessions.find(s => s.id === chatStore.activeSessionId) || null;
+        }
+
+        function getSessionById(id) {
+            return chatStore.sessions.find(s => s.id === id) || null;
+        }
+
+        // Proxy `appState` to the currently active session so existing helper functions work seamlessly
+        const appState = new Proxy({}, {
+            get(_, prop) {
+                const session = getActiveSession();
+                return session ? session[prop] : undefined;
+            },
+            set(_, prop, value) {
+                const session = getActiveSession();
+                if (session) {
+                    session[prop] = value;
+                }
+                return true;
+            }
+        });
+
+        function formatDuration(seconds) {
+            if (seconds === null || seconds === undefined || !isFinite(seconds)) return 'Calculating...';
+            const s = Math.max(0, Math.ceil(seconds));
+            if (s === 0) return '< 1s left';
+            if (s < 60) return `~${s}s remaining`;
+            const mins = Math.floor(s / 60);
+            const remSec = s % 60;
+            return `~${mins}m ${remSec < 10 ? '0' : ''}${remSec}s left`;
+        }
+
+        function formatShortEta(seconds) {
+            if (seconds === null || seconds === undefined || !isFinite(seconds)) return '...';
+            const s = Math.max(1, Math.ceil(seconds));
+            if (s < 60) return `${s}s left`;
+            return `${Math.floor(s / 60)}m ${s % 60}s`;
+        }
+
+        function toggleChatSidebar() {
+            const sidebar = document.getElementById('chatSidebar');
+            sidebar.classList.toggle('hidden');
+            if (appState.fileType === 'pdf') {
+                setTimeout(() => {
+                    applyZoomToPreview('original');
+                    applyZoomToPreview('translated');
+                }, 50);
+            }
+        }
+
+        function createNewChatSession() {
+            const newSession = createSessionObject();
+            chatStore.sessions.unshift(newSession);
+            chatStore.activeSessionId = newSession.id;
+            switchTab('workspace');
+            renderChatSidebar();
+            syncWorkspaceToActiveSession();
+            showToast(`Started Chat #${newSession.sessionNumber} (Gemini Key #${newSession.keySlot}). Upload a PDF or DOCX anytime!`, 'info');
+        }
+
+        function selectChatSession(sessionId) {
+            if (!getSessionById(sessionId)) return;
+            chatStore.activeSessionId = sessionId;
+            switchTab('workspace');
+            renderChatSidebar();
+            syncWorkspaceToActiveSession();
+        }
+
+        function deleteChatSession(event, sessionId) {
+            event.stopPropagation();
+            const target = getSessionById(sessionId);
+            if (!target) return;
+            if (target.progress && target.progress.timerInterval) {
+                clearInterval(target.progress.timerInterval);
+            }
+            chatStore.sessions = chatStore.sessions.filter(s => s.id !== sessionId);
+            if (chatStore.sessions.length === 0) {
+                const fresh = createSessionObject();
+                chatStore.sessions.push(fresh);
+                chatStore.activeSessionId = fresh.id;
+            } else if (chatStore.activeSessionId === sessionId) {
+                chatStore.activeSessionId = chatStore.sessions[0].id;
+            }
+            renderChatSidebar();
+            syncWorkspaceToActiveSession();
+        }
+
+        // Renders the ChatGPT/Gemini style chat list with Circular SVG Progress Rings on active chats
+        function renderChatSidebar() {
+            const listEl = document.getElementById('chatHistoryList');
+            const countBadge = document.getElementById('chatCountBadge');
+            const activeBanner = document.getElementById('sidebarActiveBanner');
+            const activeCountText = document.getElementById('sidebarActiveCountText');
+            if (!listEl) return;
+
+            countBadge.textContent = `${chatStore.sessions.length} ${chatStore.sessions.length === 1 ? 'chat' : 'chats'}`;
+
+            const activeTranslatingCount = chatStore.sessions.filter(s => s.isTranslating || s.isParsing).length;
+            if (activeTranslatingCount > 0) {
+                activeBanner.classList.remove('hidden');
+                activeCountText.textContent = `${activeTranslatingCount} file${activeTranslatingCount > 1 ? 's' : ''} processing`;
+            } else {
+                activeBanner.classList.add('hidden');
+            }
+
+            listEl.innerHTML = '';
+
+            chatStore.sessions.forEach(session => {
+                const isActive = session.id === chatStore.activeSessionId;
+                const item = document.createElement('div');
+                item.onclick = () => selectChatSession(session.id);
+                item.className = `group relative rounded-xl px-3 py-2.5 cursor-pointer transition-all border flex items-center justify-between gap-2.5 ${
+                    isActive
+                        ? 'bg-blue-50/90 dark:bg-blue-950/60 border-blue-200 dark:border-blue-800/80 text-blue-700 dark:text-blue-200 shadow-sm'
+                        : 'bg-transparent hover:bg-slate-100 dark:hover:bg-slate-800/60 border-transparent text-slate-700 dark:text-slate-300'
+                }`;
+
+                // Left Status Indicator: Circular Progress Ring (like ChatGPT/Gemini) when translating/parsing
+                let statusVisualHtml = '';
+                const pct = Math.min(100, Math.max(0, Math.round(session.progress.percent || 0)));
+                const radius = 10;
+                const circumference = 2 * Math.PI * radius;
+                const offset = circumference - (pct / 100) * circumference;
+
+                if (session.isTranslating || session.isParsing) {
+                    statusVisualHtml = `
+                        <div class="relative w-7 h-7 flex items-center justify-center shrink-0" title="${pct}% complete">
+                            <svg class="w-7 h-7" viewBox="0 0 24 24">
+                                <circle class="text-slate-200 dark:text-slate-700" stroke-width="2.5" stroke="currentColor" fill="transparent" r="${radius}" cx="12" cy="12"/>
+                                <circle class="text-blue-600 dark:text-blue-400 progress-ring-circle" stroke-width="2.5" stroke-dasharray="${circumference}" stroke-dashoffset="${offset}" stroke-linecap="round" stroke="currentColor" fill="transparent" r="${radius}" cx="12" cy="12"/>
+                            </svg>
+                            <span class="absolute text-[8px] font-mono font-bold text-blue-600 dark:text-blue-300">${pct}%</span>
+                        </div>
+                    `;
+                } else if (session.isTranslated) {
+                    statusVisualHtml = `
+                        <div class="w-7 h-7 rounded-lg bg-emerald-100 dark:bg-emerald-950/70 border border-emerald-300/60 dark:border-emerald-800 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shrink-0" title="Translated & Ready to Download">
+                            <i class="fa-solid fa-check text-xs"></i>
+                        </div>
+                    `;
+                } else if (session.fileType === 'pdf') {
+                    statusVisualHtml = `
+                        <div class="w-7 h-7 rounded-lg bg-rose-50 dark:bg-rose-950/50 border border-rose-200/60 dark:border-rose-800/50 flex items-center justify-center text-rose-500 shrink-0">
+                            <i class="fa-solid fa-file-pdf text-xs"></i>
+                        </div>
+                    `;
+                } else if (session.fileType === 'docx') {
+                    statusVisualHtml = `
+                        <div class="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-950/50 border border-blue-200/60 dark:border-blue-800/50 flex items-center justify-center text-blue-500 shrink-0">
+                            <i class="fa-solid fa-file-word text-xs"></i>
+                        </div>
+                    `;
+                } else {
+                    statusVisualHtml = `
+                        <div class="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 shrink-0">
+                            <i class="fa-regular fa-comment-dots text-xs"></i>
+                        </div>
+                    `;
+                }
+
+                // Subtitle text under the chat name
+                let subtitleHtml = '';
+                if (session.isParsing) {
+                    subtitleHtml = `<span class="text-blue-600 dark:text-blue-400 font-medium">Scanning pages (${pct}%)...</span>`;
+                } else if (session.isTranslating) {
+                    const etaStr = formatShortEta(session.progress.etaSeconds);
+                    subtitleHtml = `<span class="text-blue-600 dark:text-blue-400 font-medium">${pct}% • ~${etaStr}</span>`;
+                } else if (session.isTranslated) {
+                    subtitleHtml = `<span class="text-emerald-600 dark:text-emerald-400 font-medium">Completed • Ready to download</span>`;
+                } else if (session.fileName) {
+                    subtitleHtml = `<span class="text-slate-400 dark:text-slate-500">Loaded • Click to translate</span>`;
+                } else {
+                    subtitleHtml = `<span class="text-slate-400 dark:text-slate-500">Empty chat • Drop a file</span>`;
+                }
+
+                // Right-side Quick Actions (Direct Download button for finished sessions + Delete button)
+                let rightActionsHtml = '';
+                if (session.isTranslated) {
+                    rightActionsHtml += `
+                        <button onclick="event.stopPropagation(); downloadSessionDocument('${session.id}')" class="w-6 h-6 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center shadow-sm transition-transform hover:scale-105" title="Download Translated ${session.fileName}">
+                            <i class="fa-solid fa-download text-[10px]"></i>
+                        </button>
+                    `;
+                }
+                if (!session.isTranslating && !session.isParsing) {
+                    rightActionsHtml += `
+                        <button onclick="deleteChatSession(event, '${session.id}')" class="opacity-0 group-hover:opacity-100 w-6 h-6 rounded-lg hover:bg-rose-100 dark:hover:bg-rose-950/60 text-slate-400 hover:text-rose-500 flex items-center justify-center transition-all" title="Delete Chat">
+                            <i class="fa-solid fa-trash-can text-[10px]"></i>
+                        </button>
+                    `;
+                }
+
+                const keyBadgeHtml = `<span class="text-[9px] font-mono px-1 py-0.5 rounded bg-blue-100/70 dark:bg-blue-950 text-blue-700 dark:text-blue-300 font-semibold shrink-0 border border-blue-200/50 dark:border-blue-800/40" title="Assigned Gemini Key #${session.keySlot}">Key #${session.keySlot}</span>`;
+
+                item.innerHTML = `
+                    <div class="flex items-center gap-2.5 min-w-0 flex-1">
+                        ${statusVisualHtml}
+                        <div class="min-w-0 flex-1">
+                            <div class="flex items-center gap-1.5">
+                                <span class="text-xs font-semibold truncate">${session.fileName || session.title}</span>
+                                ${keyBadgeHtml}
+                            </div>
+                            <div class="text-[10px] truncate mt-0.5">${subtitleHtml}</div>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-1 shrink-0">
+                        ${rightActionsHtml}
+                    </div>
+                `;
+
+                listEl.appendChild(item);
+            });
+        }
+
+        function syncWorkspaceToActiveSession() {
+            const session = getActiveSession();
+            if (!session) return;
+
+            const uploadSection = document.getElementById('uploadSection');
+            const activeWorkspace = document.getElementById('activeWorkspace');
+            const uploadLabel = document.getElementById('uploadChatSessionLabel');
+
+            if (!session.fileType) {
+                uploadSection.classList.remove('hidden');
+                activeWorkspace.classList.add('hidden');
+                document.getElementById('fileInput').value = '';
+                if (uploadLabel) {
+                    uploadLabel.innerHTML = `<span>${session.title}</span> <span class="mx-1 text-slate-300 dark:text-slate-600">•</span> <span class="text-blue-600 dark:text-blue-400 font-mono font-semibold">Gemini Key #${session.keySlot}</span>`;
+                }
+                return;
+            }
+
+            uploadSection.classList.add('hidden');
+            activeWorkspace.classList.remove('hidden');
+
+            // Update file summary card
+            const iconEl = document.getElementById('fileTypeIcon');
+            const badgeEl = document.getElementById('fileBadge');
+            const dlLabel = document.getElementById('downloadBtnLabel');
+            const trLabel = document.getElementById('translateBtnLabel');
+            const sessionKeyBadge = document.getElementById('sessionKeyBadge');
+
+            document.getElementById('fileNameDisplay').textContent = session.fileName;
+            document.getElementById('docStatsDisplay').textContent = session.statsText;
+            if (sessionKeyBadge) {
+                sessionKeyBadge.textContent = `Gemini Key #${session.keySlot || 1}`;
+            }
+            document.getElementById('hinglishTone').value = session.tone || 'natural';
+            document.getElementById('chkSyncZoom').checked = session.syncZoom;
+            document.getElementById('chkSyncScroll').checked = session.syncScroll;
+
+            if (session.fileType === 'docx') {
+                iconEl.className = 'w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800 flex items-center justify-center text-blue-600 dark:text-blue-400 text-lg shrink-0';
+                iconEl.innerHTML = '<i class="fa-solid fa-file-word"></i>';
+                badgeEl.textContent = 'DOCX XML Engine';
+                dlLabel.textContent = 'Download Hinglish .DOCX';
+            } else {
+                iconEl.className = 'w-10 h-10 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 flex items-center justify-center text-rose-600 dark:text-rose-400 text-lg shrink-0';
+                iconEl.innerHTML = '<i class="fa-solid fa-file-pdf"></i>';
+                badgeEl.textContent = 'PDF Coordinate Engine';
+                dlLabel.textContent = 'Download Hinglish .PDF';
+            }
+
+            // Update buttons & progress box for this session
+            const btnTranslate = document.getElementById('btnTranslateDoc');
+            const btnDownload = document.getElementById('btnDownloadDoc');
+            btnTranslate.disabled = session.isTranslating || session.isParsing;
+            trLabel.textContent = session.isTranslating
+                ? 'Translating in Progress...'
+                : (session.isTranslated ? 'Re-Translate to Hinglish' : 'Translate to Hinglish');
+            btnDownload.disabled = !session.isTranslated;
+
+            updateActiveSessionProgressDOM();
+            updateZoomBadges();
+
+            // Re-render document previews for the selected session
+            if (session.fileType === 'docx') {
+                renderDocxPreview('original');
+                renderDocxPreview('translated');
+            } else if (session.fileType === 'pdf') {
+                renderPdfPreview('original');
+                renderPdfPreview('translated');
+            }
+        }
+
+        function updateActiveSessionProgressDOM() {
+            const session = getActiveSession();
+            const progressContainer = document.getElementById('progressContainer');
+            if (!session || (!session.isTranslating && !session.isParsing && !session.isTranslated)) {
+                progressContainer.classList.add('hidden');
+                progressContainer.classList.remove('flex');
+                return;
+            }
+
+            progressContainer.classList.remove('hidden');
+            progressContainer.classList.add('flex');
+
+            const pct = Math.min(100, Math.max(0, Math.round(session.progress.percent || 0)));
+            document.getElementById('progressBarFill').style.width = `${pct}%`;
+            document.getElementById('progressPercentText').textContent = `${pct}%`;
+            document.getElementById('progressStatusText').innerHTML = session.progress.statusText;
+
+            const etaEl = document.getElementById('progressEtaText');
+            const elapsedEl = document.getElementById('progressElapsedText');
+
+            if (session.isTranslated && !session.isTranslating) {
+                etaEl.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-500"></i> <span class="text-emerald-600 dark:text-emerald-400">Completed (0s left)</span>`;
+                elapsedEl.textContent = `Done in ${session.progress.elapsedSeconds || 1}s`;
+            } else {
+                etaEl.innerHTML = `<i class="fa-regular fa-clock text-[11px]"></i> <span>${formatDuration(session.progress.etaSeconds)}</span>`;
+                elapsedEl.textContent = `${session.progress.elapsedSeconds || 0}s elapsed (${session.progress.completedItems}/${session.progress.totalItems || '?'})`;
+            }
+        }
+
+        function updateSessionTone(val) {
+            const session = getActiveSession();
+            if (session) session.tone = val;
+        }
+
+        function toggleDarkMode() {
+            const htmlEl = document.documentElement;
+            const iconEl = document.getElementById('darkModeIcon');
+            if (htmlEl.classList.contains('dark')) {
+                htmlEl.classList.remove('dark');
+                iconEl.className = 'fa-solid fa-sun text-sm';
+                localStorage.setItem('theme', 'light');
+            } else {
+                htmlEl.classList.add('dark');
+                iconEl.className = 'fa-solid fa-moon text-sm';
+                localStorage.setItem('theme', 'dark');
+            }
+        }
+
+        // Restore saved theme preference
+        if (localStorage.getItem('theme') === 'light') {
+            document.documentElement.classList.remove('dark');
+            document.getElementById('darkModeIcon').className = 'fa-solid fa-sun text-sm';
+        }
+
+        function updateZoomBadges() {
+            const origPct = Math.round(appState.zoomOriginal * 100);
+            const transPct = Math.round(appState.zoomTranslated * 100);
+            document.getElementById('zoomBadgeOriginal').textContent = `${origPct}%`;
+            document.getElementById('zoomBadgeTranslated').textContent = `${transPct}%`;
+        }
+
+        function changeZoom(target, delta) {
+            const clamp = (val) => Math.min(Math.max(Math.round(val * 100) / 100, 0.4), 2.5);
+            if (target === 'both' || appState.syncZoom) {
+                appState.zoomOriginal = clamp(appState.zoomOriginal + delta);
+                appState.zoomTranslated = clamp(appState.zoomTranslated + delta);
+                applyZoomToPreview('original');
+                applyZoomToPreview('translated');
+            } else if (target === 'original') {
+                appState.zoomOriginal = clamp(appState.zoomOriginal + delta);
+                applyZoomToPreview('original');
+            } else if (target === 'translated') {
+                appState.zoomTranslated = clamp(appState.zoomTranslated + delta);
+                applyZoomToPreview('translated');
+            }
+            updateZoomBadges();
+        }
+
+        function resetZoom(target) {
+            if (target === 'both' || appState.syncZoom) {
+                appState.zoomOriginal = 1.0;
+                appState.zoomTranslated = 1.0;
+                applyZoomToPreview('original');
+                applyZoomToPreview('translated');
+            } else if (target === 'original') {
+                appState.zoomOriginal = 1.0;
+                applyZoomToPreview('original');
+            } else if (target === 'translated') {
+                appState.zoomTranslated = 1.0;
+                applyZoomToPreview('translated');
+            }
+            updateZoomBadges();
+        }
+
+        function toggleSyncZoom(checked) {
+            appState.syncZoom = checked;
+            if (checked) {
+                appState.zoomTranslated = appState.zoomOriginal;
+                applyZoomToPreview('translated');
+                updateZoomBadges();
+            }
+        }
+
+        function toggleSyncScroll(checked) {
+            appState.syncScroll = checked;
+        }
+
+        function computePdfFitScale(mode, pageWidth) {
+            const pane = document.getElementById(mode === 'original' ? 'originalScrollPane' : 'translatedScrollPane');
+            if (!pane || !pageWidth) return 0.6;
+            const availableWidth = Math.max(pane.clientWidth - 32, 240);
+            return Math.min(1.0, availableWidth / pageWidth);
+        }
+
+        function applyZoomToPreview(mode) {
+            const userZoom = mode === 'original' ? appState.zoomOriginal : appState.zoomTranslated;
+            const container = document.getElementById(
+                mode === 'original' ? 'originalPreviewContainer' : 'translatedPreviewContainer'
+            );
+            if (!container) return;
+
+            if (appState.fileType === 'pdf') {
+                const stages = container.querySelectorAll('.pdf-scale-stage');
+                stages.forEach(stage => {
+                    const rawWidth = parseFloat(stage.getAttribute('data-raw-width'));
+                    const rawHeight = parseFloat(stage.getAttribute('data-raw-height'));
+                    const fitScale = computePdfFitScale(mode, rawWidth);
+                    const effectiveScale = fitScale * userZoom;
+
+                    stage.style.width = `${Math.round(rawWidth * effectiveScale)}px`;
+                    stage.style.height = `${Math.round(rawHeight * effectiveScale)}px`;
+
+                    const innerPage = stage.querySelector('.pdf-page-inner');
+                    if (innerPage) {
+                        innerPage.style.transform = `scale(${effectiveScale})`;
+                    }
+                });
+            } else if (appState.fileType === 'docx') {
+                container.style.zoom = String(userZoom);
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            const origPane = document.getElementById('originalScrollPane');
+            const transPane = document.getElementById('translatedScrollPane');
+            let isSyncingLeft = false;
+            let isSyncingRight = false;
+
+            if (origPane && transPane) {
+                origPane.addEventListener('scroll', () => {
+                    if (!appState.syncScroll || isSyncingLeft) { isSyncingLeft = false; return; }
+                    isSyncingRight = true;
+                    const maxOrigY = origPane.scrollHeight - origPane.clientHeight;
+                    const maxTransY = transPane.scrollHeight - transPane.clientHeight;
+                    if (maxOrigY > 0 && maxTransY > 0) {
+                        transPane.scrollTop = (origPane.scrollTop / maxOrigY) * maxTransY;
+                    }
+                    transPane.scrollLeft = origPane.scrollLeft;
+                });
+
+                transPane.addEventListener('scroll', () => {
+                    if (!appState.syncScroll || isSyncingRight) { isSyncingRight = false; return; }
+                    isSyncingLeft = true;
+                    const maxTransY = transPane.scrollHeight - transPane.clientHeight;
+                    const maxOrigY = origPane.scrollHeight - origPane.clientHeight;
+                    if (maxTransY > 0 && maxOrigY > 0) {
+                        origPane.scrollTop = (transPane.scrollTop / maxTransY) * maxOrigY;
+                    }
+                    origPane.scrollLeft = transPane.scrollLeft;
+                });
+            }
+
+            window.addEventListener('resize', () => {
+                if (appState.fileType === 'pdf') {
+                    applyZoomToPreview('original');
+                    applyZoomToPreview('translated');
+                }
+            });
+
+            // Initialize first default Chat Session on load
+            const initialSession = createSessionObject();
+            chatStore.sessions.push(initialSession);
+            chatStore.activeSessionId = initialSession.id;
+            renderChatSidebar();
+            syncWorkspaceToActiveSession();
+        });
+
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            const colorMap = {
+                info: 'bg-white dark:bg-slate-900 border-blue-500/50 text-slate-900 dark:text-slate-100 shadow-xl',
+                success: 'bg-white dark:bg-slate-900 border-emerald-500/60 text-emerald-800 dark:text-emerald-200 shadow-xl',
+                error: 'bg-white dark:bg-slate-900 border-rose-500/60 text-rose-800 dark:text-rose-200 shadow-xl'
+            };
+            const iconMap = {
+                info: 'fa-circle-info text-blue-500',
+                success: 'fa-circle-check text-emerald-500',
+                error: 'fa-triangle-exclamation text-rose-500'
+            };
+            toast.className = `pointer-events-auto border rounded-xl p-3.5 flex items-start gap-3 transition-all duration-300 ${colorMap[type] || colorMap.info}`;
+            toast.innerHTML = `<i class="fa-solid ${iconMap[type] || iconMap.info} mt-0.5"></i><div class="text-xs sm:text-sm font-medium flex-1">${message}</div>`;
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                setTimeout(() => toast.remove(), 300);
+            }, 4000);
+        }
+
+        function switchTab(tab) {
+            const viewWorkspace = document.getElementById('viewWorkspace');
+            const viewArchitecture = document.getElementById('viewArchitecture');
+            const btnWorkspace = document.getElementById('tabBtnWorkspace');
+            const btnArchitecture = document.getElementById('tabBtnArchitecture');
+
+            if (tab === 'workspace') {
+                viewWorkspace.classList.remove('hidden');
+                viewWorkspace.classList.add('flex');
+                viewArchitecture.classList.add('hidden');
+                viewArchitecture.classList.remove('flex');
+                btnWorkspace.className = 'px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all bg-blue-600 text-white shadow-sm';
+                btnArchitecture.className = 'px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white';
+            } else {
+                viewWorkspace.classList.add('hidden');
+                viewWorkspace.classList.remove('flex');
+                viewArchitecture.classList.remove('hidden');
+                viewArchitecture.classList.add('flex');
+                btnArchitecture.className = 'px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all bg-blue-600 text-white shadow-sm';
+                btnWorkspace.className = 'px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white';
+            }
+        }
+
+        function resetWorkspace() {
+            updateApiKeyBadgeUI();
+            createNewChatSession();
+        }
+
+        function handleDragOver(e) { e.preventDefault(); e.stopPropagation(); }
+        function handleDragLeave(e) { e.preventDefault(); e.stopPropagation(); }
+        function handleDrop(e) {
+            e.preventDefault(); e.stopPropagation();
+            if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                processUploadedFile(e.dataTransfer.files[0]);
+            }
+        }
+        function handleFileSelect(e) {
+            if (e.target.files && e.target.files.length > 0) {
+                processUploadedFile(e.target.files[0]);
+            }
+        }
+
+        async function processUploadedFile(file) {
+            const name = file.name;
+            const ext = name.split('.').pop().toLowerCase();
+            if (ext !== 'docx' && ext !== 'pdf') {
+                showToast('Please upload a valid .DOCX or .PDF file.', 'error');
+                return;
+            }
+
+            let session = getActiveSession();
+            // If current session already has a file, automatically create a new session or reuse if empty
+            if (!session || session.fileType !== null) {
+                session = createSessionObject();
+                chatStore.sessions.unshift(session);
+                chatStore.activeSessionId = session.id;
+            }
+
+            session.fileName = name;
+            session.title = name;
+            session.fileType = ext;
+            session.isTranslated = false;
+
+            renderChatSidebar();
+            syncWorkspaceToActiveSession();
+
+            if (ext === 'docx') {
+                await parseDocxFile(file, session);
+            } else {
+                await parsePdfFile(file, session);
+            }
+        }
+
+        async function parseDocxFile(fileOrBlob, session = getActiveSession()) {
+            if (!session) return;
+            try {
+                session.isParsing = true;
+                session.progress.percent = 20;
+                session.progress.statusText = `<i class="fa-solid fa-circle-notch fa-spin"></i> Parsing DOCX XML structure...`;
+                renderChatSidebar();
+                if (session.id === chatStore.activeSessionId) updateActiveSessionProgressDOM();
+
+                const arrayBuffer = await fileOrBlob.arrayBuffer();
+                const zip = await JSZip.loadAsync(arrayBuffer);
+                session.docxZip = zip;
+                session.docxMediaUrls = {};
+                session.docxTranslatableNodes = [];
+
+                const relsFile = zip.file('word/_rels/document.xml.rels');
+                const relMap = {};
+                if (relsFile) {
+                    const relsXmlText = await relsFile.async('string');
+                    const parser = new DOMParser();
+                    const relsDoc = parser.parseFromString(relsXmlText, 'application/xml');
+                    const relNodes = relsDoc.getElementsByTagName('Relationship');
+                    for (let i = 0; i < relNodes.length; i++) {
+                        const rId = relNodes[i].getAttribute('Id');
+                        const target = relNodes[i].getAttribute('Target');
+                        if (rId && target) {
+                            relMap[rId] = target.startsWith('/') ? target.slice(1) : `word/${target}`;
+                        }
+                    }
+                }
+
+                for (const [rId, path] of Object.entries(relMap)) {
+                    const mediaFile = zip.file(path);
+                    if (mediaFile) {
+                        const blob = await mediaFile.async('blob');
+                        session.docxMediaUrls[rId] = URL.createObjectURL(blob);
+                    }
+                }
+
+                const docXmlFile = zip.file('word/document.xml');
+                const docXmlStr = await docXmlFile.async('string');
+                const parser = new DOMParser();
+                const xmlDoc = parser.parseFromString(docXmlStr, 'application/xml');
+                session.docxXmlDoc = xmlDoc;
+
+                const allParagraphs = Array.from(xmlDoc.getElementsByTagName('w:p'));
+                let nodeIdCounter = 0;
+                allParagraphs.forEach((pNode) => {
+                    const allT = Array.from(pNode.getElementsByTagName('w:t'));
+                    const directTNodes = allT.filter(t => t.closest('w\\:p, p') === pNode);
+                    if (directTNodes.length > 0) {
+                        const combinedText = directTNodes.map(t => t.textContent).join('');
+                        if (combinedText.trim().length > 0) {
+                            const id = nodeIdCounter++;
+                            pNode.setAttribute('data-hinglish-id', String(id));
+                            session.docxTranslatableNodes.push({
+                                id,
+                                originalText: combinedText,
+                                translatedText: combinedText,
+                                tNodes: directTNodes
+                            });
+                        }
+                    }
+                });
+
+                const tableCount = xmlDoc.getElementsByTagName('w:tbl').length;
+                const imageCount = Object.keys(session.docxMediaUrls).length;
+                session.statsText = `${session.docxTranslatableNodes.length} blocks • ${tableCount} tables • ${imageCount} images preserved`;
+                session.isParsing = false;
+                session.progress.percent = 0;
+
+                renderChatSidebar();
+                if (session.id === chatStore.activeSessionId) {
+                    syncWorkspaceToActiveSession();
+                }
+                showToast(`"${session.fileName}" parsed! Ready to translate.`, 'info');
+            } catch (err) {
+                session.isParsing = false;
+                renderChatSidebar();
+                console.error(err);
+                showToast('Error parsing DOCX: ' + err.message, 'error');
+            }
+        }
+
+        function renderDocxPreview(mode) {
+            const container = document.getElementById(
+                mode === 'original' ? 'originalPreviewContainer' : 'translatedPreviewContainer'
+            );
+            if (!appState.docxXmlDoc) return;
+            const bodyNode = appState.docxXmlDoc.getElementsByTagName('w:body')[0];
+            if (!bodyNode) return;
+
+            container.innerHTML = '';
+            const wrapper = document.createElement('div');
+            wrapper.className = 'space-y-3 text-sm leading-relaxed text-slate-800 dark:text-slate-200';
+
+            Array.from(bodyNode.childNodes).forEach(child => {
+                if (child.nodeName === 'w:p') {
+                    const pEl = renderDocxParagraphNode(child, mode);
+                    if (pEl) wrapper.appendChild(pEl);
+                } else if (child.nodeName === 'w:tbl') {
+                    const tblEl = renderDocxTableNode(child, mode);
+                    if (tblEl) wrapper.appendChild(tblEl);
+                }
+            });
+            container.appendChild(wrapper);
+            applyZoomToPreview(mode);
+        }
+
+        function renderDocxParagraphNode(pNode, mode) {
+            const pEl = document.createElement('div');
+            const hinglishIdAttr = pNode.getAttribute('data-hinglish-id');
+            let styleClasses = 'my-1.5';
+
+            const pStyle = pNode.getElementsByTagName('w:pStyle')[0];
+            if (pStyle) {
+                const val = (pStyle.getAttribute('w:val') || '').toLowerCase();
+                if (val.includes('heading1') || val === 'title') {
+                    styleClasses = 'text-lg font-bold mt-3 mb-2 border-b border-slate-200 dark:border-slate-800 pb-1';
+                } else if (val.includes('heading2')) {
+                    styleClasses = 'text-base font-bold text-blue-700 dark:text-blue-400 mt-2 mb-1';
+                }
+            }
+            pEl.className = styleClasses;
+
+            const blips = Array.from(pNode.getElementsByTagName('a:blip'));
+            blips.forEach(blip => {
+                const rId = blip.getAttribute('r:embed');
+                if (rId && appState.docxMediaUrls[rId]) {
+                    const imgWrap = document.createElement('div');
+                    imgWrap.className = 'my-3 flex justify-center';
+                    const img = document.createElement('img');
+                    img.src = appState.docxMediaUrls[rId];
+                    img.className = 'max-h-48 w-auto rounded-lg border border-slate-200 dark:border-slate-800 shadow-sm';
+                    imgWrap.appendChild(img);
+                    pEl.appendChild(imgWrap);
+                }
+            });
+
+            if (hinglishIdAttr !== null) {
+                const id = parseInt(hinglishIdAttr, 10);
+                const item = appState.docxTranslatableNodes[id];
+                if (item) {
+                    const span = document.createElement('span');
+                    span.textContent = mode === 'original' ? item.originalText : item.translatedText;
+                    if (mode === 'translated') {
+                        span.contentEditable = 'true';
+                        span.className = 'outline-none rounded px-1 -mx-1 transition-colors hover:bg-blue-50 dark:hover:bg-blue-950/40 focus:ring-1 focus:ring-blue-400';
+                        span.addEventListener('input', (e) => { item.translatedText = e.target.textContent; });
+                    }
+                    pEl.appendChild(span);
+                }
+            }
+            if (pEl.childNodes.length === 0) return null;
+            return pEl;
+        }
+
+        function renderDocxTableNode(tblNode, mode) {
+            const table = document.createElement('table');
+            table.className = 'w-full border-collapse border border-slate-300 dark:border-slate-700 my-4 text-xs shadow-sm rounded-lg overflow-hidden';
+            const tbody = document.createElement('tbody');
+
+            const rows = Array.from(tblNode.childNodes).filter(n => n.nodeName === 'w:tr');
+            rows.forEach((trNode, rowIdx) => {
+                const tr = document.createElement('tr');
+                tr.className = rowIdx === 0 ? 'bg-slate-100 dark:bg-slate-800 font-semibold' : '';
+                const cells = Array.from(trNode.childNodes).filter(n => n.nodeName === 'w:tc');
+                cells.forEach(tcNode => {
+                    const td = document.createElement('td');
+                    td.className = 'border border-slate-300 dark:border-slate-700 px-2.5 py-1.5 align-top';
+                    const cellParagraphs = Array.from(tcNode.childNodes).filter(n => n.nodeName === 'w:p');
+                    cellParagraphs.forEach(pNode => {
+                        const renderedP = renderDocxParagraphNode(pNode, mode);
+                        if (renderedP) td.appendChild(renderedP);
+                    });
+                    tr.appendChild(td);
+                });
+                tbody.appendChild(tr);
+            });
+            table.appendChild(tbody);
+            return table;
+        }
+
+        async function parsePdfFile(file, session = getActiveSession()) {
+            if (!session) return;
+            try {
+                session.isParsing = true;
+                session.progress.percent = 5;
+                session.progress.statusText = `<i class="fa-solid fa-circle-notch fa-spin"></i> Loading PDF pages...`;
+                renderChatSidebar();
+                if (session.id === chatStore.activeSessionId) updateActiveSessionProgressDOM();
+
+                const arrayBuffer = await file.arrayBuffer();
+                const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                session.pdfDoc = pdf;
+                session.pdfPagesData = [];
+                const totalPages = pdf.numPages;
+                const scale = session.pdfPreviewScale || 2.0;
+                let blockCounter = 0;
+
+                for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
+                    session.progress.percent = Math.round((pageNum / totalPages) * 100);
+                    session.progress.statusText = `<i class="fa-solid fa-circle-notch fa-spin"></i> Scanning PDF page ${pageNum} of ${totalPages}...`;
+                    renderChatSidebar();
+                    if (session.id === chatStore.activeSessionId) {
+                        document.getElementById('docStatsDisplay').textContent = `Scanning page ${pageNum} of ${totalPages}...`;
+                        updateActiveSessionProgressDOM();
+                    }
+
+                    const page = await pdf.getPage(pageNum);
+                    const ptViewport = page.getViewport({ scale: 1.0 });
+                    const viewport = page.getViewport({ scale });
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d', { alpha: false });
+                    canvas.width = viewport.width;
+                    canvas.height = viewport.height;
+
+                    await page.render({ canvasContext: ctx, viewport }).promise;
+                    const bgDataUrl = canvas.toDataURL('image/png');
+                    const textContent = await page.getTextContent();
+                    const rawItems = [];
+
+                    textContent.items.forEach(item => {
+                        if (!item.str || !item.str.trim()) return;
+                        const tx = window.pdfjsLib.Util.transform(viewport.transform, item.transform);
+                        const fontHeight = Math.hypot(tx[2], tx[3]);
+                        rawItems.push({
+                            str: item.str,
+                            x: tx[4],
+                            y: tx[5] - fontHeight,
+                            width: Math.max(item.width * scale, 20),
+                            height: Math.max(fontHeight * 1.25, 12),
+                            fontSize: Math.max(Math.round(fontHeight * 0.84), 9)
+                        });
+                    });
+
+                    const mergedBlocks = [];
+                    rawItems.forEach(item => {
+                        const sampleX = Math.min(Math.max(Math.floor(item.x + 2), 1), canvas.width - 1);
+                        const sampleY = Math.min(Math.max(Math.floor(item.y - 1), 1), canvas.height - 1);
+                        const pixel = ctx.getImageData(sampleX, sampleY, 1, 1).data;
+                        const bgColor = `rgb(${pixel[0]}, ${pixel[1]}, ${pixel[2]})`;
+
+                        mergedBlocks.push({
+                            id: blockCounter++,
+                            pageNumber: pageNum,
+                            x: item.x,
+                            y: item.y,
+                            width: item.width,
+                            height: item.height,
+                            fontSize: item.fontSize,
+                            originalText: item.str,
+                            translatedText: item.str,
+                            bgColor
+                        });
+                    });
+
+                    session.pdfPagesData.push({
+                        pageNumber: pageNum,
+                        width: viewport.width,
+                        height: viewport.height,
+                        ptWidth: ptViewport.width,
+                        ptHeight: ptViewport.height,
+                        previewScale: scale,
+                        bgDataUrl,
+                        textBlocks: mergedBlocks
+                    });
+
+                    await new Promise(r => setTimeout(r, 10));
+                }
+
+                session.statsText = `${session.pdfPagesData.length} PDF page(s) • ${blockCounter} text blocks ready`;
+                session.isParsing = false;
+                session.progress.percent = 0;
+                session.zoomOriginal = 1.0;
+                session.zoomTranslated = 1.0;
+
+                renderChatSidebar();
+                if (session.id === chatStore.activeSessionId) {
+                    syncWorkspaceToActiveSession();
+                }
+                showToast(`Loaded ${totalPages} PDF page(s) in "${session.fileName}".`, 'info');
+            } catch (err) {
+                session.isParsing = false;
+                renderChatSidebar();
+                console.error(err);
+                showToast('Error reading PDF: ' + err.message, 'error');
+            }
+        }
+
+        function renderPdfPreview(mode) {
+            const container = document.getElementById(
+                mode === 'original' ? 'originalPreviewContainer' : 'translatedPreviewContainer'
+            );
+            container.innerHTML = '';
+            container.className = 'w-full flex flex-col items-center gap-4';
+            const totalPages = appState.pdfPagesData.length;
+            const userZoom = mode === 'original' ? appState.zoomOriginal : appState.zoomTranslated;
+
+            appState.pdfPagesData.forEach(pageData => {
+                const pageOuter = document.createElement('div');
+                pageOuter.className = 'flex flex-col items-center gap-1 shrink-0';
+
+                const pageBadge = document.createElement('div');
+                pageBadge.className = 'text-[10px] font-mono px-2 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400';
+                pageBadge.textContent = `Page ${pageData.pageNumber} of ${totalPages}`;
+                pageOuter.appendChild(pageBadge);
+
+                const fitScale = computePdfFitScale(mode, pageData.width);
+                const effectiveScale = fitScale * userZoom;
+
+                const scaleStage = document.createElement('div');
+                scaleStage.className = 'pdf-scale-stage relative bg-white doc-page-shadow rounded overflow-hidden shrink-0';
+                scaleStage.setAttribute('data-raw-width', String(pageData.width));
+                scaleStage.setAttribute('data-raw-height', String(pageData.height));
+                scaleStage.style.width = `${Math.round(pageData.width * effectiveScale)}px`;
+                scaleStage.style.height = `${Math.round(pageData.height * effectiveScale)}px`;
+
+                const pageWrap = document.createElement('div');
+                pageWrap.className = 'pdf-page-inner relative bg-white origin-top-left';
+                pageWrap.style.width = `${pageData.width}px`;
+                pageWrap.style.height = `${pageData.height}px`;
+                pageWrap.style.transform = `scale(${effectiveScale})`;
+                pageWrap.style.transformOrigin = 'top left';
+
+                const bgImg = document.createElement('img');
+                bgImg.src = pageData.bgDataUrl;
+                bgImg.className = 'w-full h-full block select-none pointer-events-none';
+                pageWrap.appendChild(bgImg);
+
+                if (mode === 'translated' && (appState.isTranslated || appState.isTranslating)) {
+                    pageData.textBlocks.forEach(block => {
+                        const overlay = document.createElement('div');
+                        overlay.contentEditable = 'true';
+                        overlay.style.position = 'absolute';
+                        overlay.style.left = `${block.x - 1}px`;
+                        overlay.style.top = `${block.y - 1}px`;
+                        overlay.style.minWidth = `${block.width + 4}px`;
+                        overlay.style.minHeight = `${block.height + 2}px`;
+                        overlay.style.fontSize = `${block.fontSize}px`;
+                        overlay.style.lineHeight = '1.15';
+                        overlay.style.backgroundColor = block.bgColor || '#ffffff';
+                        overlay.style.color = '#0f172a';
+                        overlay.style.padding = '0px 2px';
+                        overlay.className = 'font-sans outline-none hover:ring-1 hover:ring-blue-400 focus:ring-2 focus:ring-blue-600 rounded-sm';
+                        overlay.textContent = block.translatedText;
+                        overlay.addEventListener('input', (e) => { block.translatedText = e.target.textContent; });
+                        pageWrap.appendChild(overlay);
+                    });
+                }
+
+                scaleStage.appendChild(pageWrap);
+                pageOuter.appendChild(scaleStage);
+                container.appendChild(pageOuter);
+            });
+        }
+
+        async function callGeminiHinglishBatch(textsArray, tone, preferredKey) {
+            const toneGuides = {
+                conversational: "Use simple, casual conversational Hinglish (daily talking style, clear and easy).",
+                natural: "Use natural balanced Hinglish that blends Hindi and English smoothly.",
+                formal: "Keep formal technical terms in English and formal Hindi sentence connectors.",
+                youth: "Use casual youth/social-media Hinglish."
+            };
+            const toneInstruction = toneGuides[tone] || toneGuides.natural;
+            const systemPrompt = `Translate each item in the JSON array into natural Hinglish (Hindi in Roman/Latin script mixed with English). ${toneInstruction} Keep original abbreviations, numbers, dates, tags, and formatting intact. Return exact 1-to-1 array in JSON property "translations".`;
+
+            const payload = {
+                contents: [{ role: "user", parts: [{ text: JSON.stringify(textsArray) }] }],
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+                generationConfig: {
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: "OBJECT",
+                        properties: { translations: { type: "ARRAY", items: { type: "STRING" } } },
+                        required: ["translations"]
+                    }
+                }
+            };
+
+            const allKeys = getGeminiApiKeys();
+            if (allKeys.length === 0) {
+                openApiKeyModal();
+                throw new Error("No Gemini API key found. Please click 'API Keys' at the top to configure your Gemini key.");
+            }
+
+            // Round-robin assigned key is prioritized, then fall back to remaining keys in pool
+            const activeKey = preferredKey && allKeys.includes(preferredKey) ? preferredKey : allKeys[0];
+            const candidateKeys = [
+                activeKey,
+                ...allKeys.filter(k => k !== activeKey)
+            ];
+
+            let lastError = null;
+            for (let i = 0; i < candidateKeys.length; i++) {
+                const key = candidateKeys[i];
+                const keySlot = allKeys.indexOf(key) + 1;
+                try {
+                    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${encodeURIComponent(key)}`;
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) {
+                        const errData = await response.json().catch(() => ({}));
+                        const errMsg = errData?.error?.message || `HTTP ${response.status}`;
+                        throw new Error(`Key #${keySlot} error: ${errMsg}`);
+                    }
+
+                    const result = await response.json();
+                    const jsonText = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+                    if (!jsonText) throw new Error(`Empty response from Gemini Key #${keySlot}`);
+
+                    const parsed = JSON.parse(jsonText);
+                    if (Array.isArray(parsed?.translations)) {
+                        return parsed.translations;
+                    }
+                    throw new Error("Invalid response format: 'translations' array missing");
+                } catch (err) {
+                    console.warn(`Key #${keySlot} attempt failed: ${err.message}. Trying next available key...`);
+                    lastError = err;
+                }
+            }
+
+            throw lastError || new Error("Failed to translate batch with all Gemini API keys in the pool");
+        }
+
+        async function translateCurrentDocument() {
+            const session = getActiveSession();
+            if (!session || session.isTranslating || session.isParsing) return;
+            await translateSessionDocument(session.id);
+        }
+
+        async function translateSessionDocument(sessionId) {
+            const session = getSessionById(sessionId);
+            if (!session || session.isTranslating) return;
+
+            session.isTranslating = true;
+            session.isTranslated = false;
+            session.tone = document.getElementById('hinglishTone')?.value || session.tone || 'natural';
+
+            // Gather items to translate
+            let totalItems = 0;
+            let allPdfBlocks = [];
+            if (session.fileType === 'docx') {
+                totalItems = session.docxTranslatableNodes.length;
+            } else if (session.fileType === 'pdf') {
+                session.pdfPagesData.forEach(p => p.textBlocks.forEach(b => allPdfBlocks.push(b)));
+                totalItems = allPdfBlocks.length;
+            }
+
+            if (totalItems === 0) {
+                session.isTranslating = false;
+                showToast('No translatable text blocks found in this document.', 'error');
+                return;
+            }
+
+            const batchSize = session.fileType === 'docx' ? 20 : 25;
+            session.progress.totalItems = totalItems;
+            session.progress.completedItems = 0;
+            session.progress.percent = 2;
+            session.progress.startTime = performance.now();
+            session.progress.elapsedSeconds = 0;
+            // Initial expected time based on ~125ms per item before first batch completes
+            session.progress.avgMsPerItem = 125;
+            session.progress.etaSeconds = Math.max(2, Math.round((totalItems * session.progress.avgMsPerItem) / 1000));
+            session.progress.statusText = `<i class="fa-solid fa-circle-notch fa-spin"></i> Translating 1/${totalItems} blocks (Key #${session.keySlot})...`;
+
+            let currentBatchStartIndex = 0;
+            let currentBatchSize = Math.min(batchSize, totalItems);
+            let batchStartTime = performance.now();
+
+            // Start real-time ticker (every 250ms) to smoothly update ETA countdown & creeping progress bar
+            if (session.progress.timerInterval) clearInterval(session.progress.timerInterval);
+            session.progress.timerInterval = setInterval(() => {
+                if (!session.isTranslating) return;
+                const now = performance.now();
+                session.progress.elapsedSeconds = Math.floor((now - session.progress.startTime) / 1000);
+
+                // Smoothly estimate in-flight items within the active batch so progress & ETA tick in real time
+                const batchElapsedMs = now - batchStartTime;
+                const expectedBatchMs = Math.max(800, currentBatchSize * session.progress.avgMsPerItem);
+                const inFlightFraction = Math.min(0.88, batchElapsedMs / expectedBatchMs);
+                const effectiveDone = session.progress.completedItems + (currentBatchSize * inFlightFraction);
+
+                session.progress.percent = Math.min(99, Math.max(2, Math.round((effectiveDone / totalItems) * 100)));
+
+                const remainingItems = Math.max(0, totalItems - effectiveDone);
+                session.progress.etaSeconds = Math.max(1, Math.ceil((remainingItems * session.progress.avgMsPerItem) / 1000));
+
+                renderChatSidebar();
+                if (session.id === chatStore.activeSessionId) {
+                    updateActiveSessionProgressDOM();
+                }
+            }, 250);
+
+            renderChatSidebar();
+            if (session.id === chatStore.activeSessionId) {
+                syncWorkspaceToActiveSession();
+            }
+
+            try {
+                if (session.fileType === 'docx') {
+                    for (let i = 0; i < totalItems; i += batchSize) {
+                        currentBatchStartIndex = i;
+                        const batch = session.docxTranslatableNodes.slice(i, i + batchSize);
+                        currentBatchSize = batch.length;
+                        batchStartTime = performance.now();
+
+                        session.progress.statusText = `<i class="fa-solid fa-circle-notch fa-spin"></i> Translating DOCX blocks ${i + 1}–${Math.min(i + batchSize, totalItems)} of ${totalItems} (Key #${session.keySlot})...`;
+                        if (session.id === chatStore.activeSessionId) updateActiveSessionProgressDOM();
+
+                        const sourceStrings = batch.map(item => item.originalText);
+                        const translatedStrings = await callGeminiHinglishBatch(sourceStrings, session.tone, session.apiKey);
+                        batch.forEach((item, idx) => {
+                            if (translatedStrings && translatedStrings[idx]) item.translatedText = translatedStrings[idx];
+                        });
+
+                        // Update real-time speed calibration
+                        const batchDurationMs = performance.now() - batchStartTime;
+                        const measuredMsPerItem = batchDurationMs / Math.max(1, batch.length);
+                        session.progress.avgMsPerItem = (session.progress.avgMsPerItem * 0.35) + (measuredMsPerItem * 0.65);
+                        session.progress.completedItems = Math.min(totalItems, i + batch.length);
+                        session.progress.percent = Math.round((session.progress.completedItems / totalItems) * 100);
+
+                        renderChatSidebar();
+                        if (session.id === chatStore.activeSessionId) {
+                            renderDocxPreview('translated');
+                            updateActiveSessionProgressDOM();
+                        }
+                    }
+                } else if (session.fileType === 'pdf') {
+                    for (let i = 0; i < totalItems; i += batchSize) {
+                        currentBatchStartIndex = i;
+                        const batch = allPdfBlocks.slice(i, i + batchSize);
+                        currentBatchSize = batch.length;
+                        batchStartTime = performance.now();
+
+                        session.progress.statusText = `<i class="fa-solid fa-circle-notch fa-spin"></i> Translating PDF boxes ${i + 1}–${Math.min(i + batchSize, totalItems)} of ${totalItems} (Key #${session.keySlot})...`;
+                        if (session.id === chatStore.activeSessionId) updateActiveSessionProgressDOM();
+
+                        const sourceStrings = batch.map(b => b.originalText);
+                        const translatedStrings = await callGeminiHinglishBatch(sourceStrings, session.tone, session.apiKey);
+                        batch.forEach((b, idx) => {
+                            if (translatedStrings && translatedStrings[idx]) b.translatedText = translatedStrings[idx];
+                        });
+
+                        // Calibrate real-time ETA speed based on actual elapsed batch speed
+                        const batchDurationMs = performance.now() - batchStartTime;
+                        const measuredMsPerItem = batchDurationMs / Math.max(1, batch.length);
+                        session.progress.avgMsPerItem = (session.progress.avgMsPerItem * 0.35) + (measuredMsPerItem * 0.65);
+                        session.progress.completedItems = Math.min(totalItems, i + batch.length);
+                        session.progress.percent = Math.round((session.progress.completedItems / totalItems) * 100);
+
+                        renderChatSidebar();
+                        if (session.id === chatStore.activeSessionId) {
+                            renderPdfPreview('translated');
+                            updateActiveSessionProgressDOM();
+                        }
+                    }
+                }
+
+                session.isTranslated = true;
+                session.progress.percent = 100;
+                session.progress.completedItems = totalItems;
+                session.progress.etaSeconds = 0;
+                session.progress.elapsedSeconds = Math.max(1, Math.round((performance.now() - session.progress.startTime) / 1000));
+                session.progress.statusText = `<i class="fa-solid fa-circle-check text-emerald-500"></i> Hinglish translation complete!`;
+
+                if (session.id === chatStore.activeSessionId) {
+                    showToast(`"${session.fileName}" translated to Hinglish! Ready to download.`, 'success');
+                } else {
+                    showToast(`Background chat "${session.fileName}" finished translating! Click its download icon in Chat History anytime.`, 'success');
+                }
+            } catch (err) {
+                console.error(err);
+                session.progress.statusText = `<i class="fa-solid fa-triangle-exclamation text-rose-500"></i> Translation interrupted`;
+                showToast(`Error translating "${session.fileName}": ` + err.message, 'error');
+            } finally {
+                if (session.progress.timerInterval) {
+                    clearInterval(session.progress.timerInterval);
+                    session.progress.timerInterval = null;
+                }
+                session.isTranslating = false;
+                renderChatSidebar();
+                if (session.id === chatStore.activeSessionId) {
+                    syncWorkspaceToActiveSession();
+                }
+            }
+        }
+
+        async function downloadTranslatedDocument() {
+            const session = getActiveSession();
+            if (!session) return;
+            await downloadSessionDocument(session.id);
+        }
+
+        async function downloadSessionDocument(sessionId) {
+            const session = getSessionById(sessionId);
+            if (!session || !session.isTranslated) return;
+
+            if (session.fileType === 'docx') {
+                session.docxTranslatableNodes.forEach(item => {
+                    if (item.tNodes && item.tNodes.length > 0) {
+                        item.tNodes[0].textContent = item.translatedText;
+                        for (let i = 1; i < item.tNodes.length; i++) item.tNodes[i].textContent = '';
+                    }
+                });
+                const serializer = new XMLSerializer();
+                session.docxZip.file('word/document.xml', serializer.serializeToString(session.docxXmlDoc));
+                const outBlob = await session.docxZip.generateAsync({
+                    type: 'blob',
+                    mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                });
+                triggerBrowserDownload(outBlob, session.fileName.replace(/\.docx$/i, '_Hinglish.docx'));
+                showToast(`Downloaded "${session.fileName.replace(/\.docx$/i, '_Hinglish.docx')}"!`, 'success');
+            } else if (session.fileType === 'pdf') {
+                showToast(`Generating 300-DPI Hinglish PDF for "${session.fileName}"...`, 'info');
+                const { jsPDF } = window.jspdf;
+                const firstPage = session.pdfPagesData[0];
+                const ptW = firstPage.ptWidth || firstPage.width / 2.0;
+                const ptH = firstPage.ptHeight || firstPage.height / 2.0;
+                const pdfDoc = new jsPDF({ orientation: ptW > ptH ? 'l' : 'p', unit: 'pt', format: [ptW, ptH], compress: true });
+                const EXPORT_SCALE = 3.0;
+
+                for (let i = 0; i < session.pdfPagesData.length; i++) {
+                    const pData = session.pdfPagesData[i];
+                    if (i > 0) pdfDoc.addPage([ptW, ptH], ptW > ptH ? 'l' : 'p');
+
+                    const outCanvas = document.createElement('canvas');
+                    const ctx = outCanvas.getContext('2d', { alpha: false });
+                    const pdfPage = await session.pdfDoc.getPage(pData.pageNumber);
+                    const hdViewport = pdfPage.getViewport({ scale: EXPORT_SCALE });
+                    outCanvas.width = hdViewport.width;
+                    outCanvas.height = hdViewport.height;
+                    await pdfPage.render({ canvasContext: ctx, viewport: hdViewport }).promise;
+
+                    const scaleRatio = EXPORT_SCALE / (pData.previewScale || 2.0);
+                    pData.textBlocks.forEach(block => {
+                        const bx = block.x * scaleRatio;
+                        const by = block.y * scaleRatio;
+                        const bw = block.width * scaleRatio;
+                        const bh = block.height * scaleRatio;
+                        ctx.fillStyle = block.bgColor || '#ffffff';
+                        ctx.fillRect(bx - 2, by - 2, bw + 6, bh + 4);
+                        ctx.fillStyle = '#0f172a';
+                        ctx.font = `500 ${block.fontSize * scaleRatio}px Inter, sans-serif`;
+                        ctx.textBaseline = 'top';
+                        ctx.fillText(block.translatedText || '', bx, by);
+                    });
+
+                    pdfDoc.addImage(outCanvas.toDataURL('image/png'), 'PNG', 0, 0, ptW, ptH, undefined, 'FAST');
+                }
+                pdfDoc.save(session.fileName.replace(/\.pdf$/i, '_Hinglish_HD.pdf'));
+                showToast(`Downloaded Ultra-HD "${session.fileName.replace(/\.pdf$/i, '_Hinglish_HD.pdf')}"!`, 'success');
+            }
+        }
+
+        function triggerBrowserDownload(blob, filename) {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(url), 3000);
+        }
+
+        async function loadSampleDocx() {
+            const zip = new JSZip();
+            zip.file('[Content_Types].xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>`);
+            zip.file('_rels/.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`);
+            
+            const sampleXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Quarterly Financial &amp; Operations Review 2026</w:t></w:r></w:p>
+    <w:p><w:r><w:t>This report details regional expansion, revenue metrics, and team deliverables across key business sectors.</w:t></w:r></w:p>
+    <w:p><w:pPr><w:pStyle w:val="Heading2"/></w:pPr><w:r><w:t>Department Summary Table</w:t></w:r></w:p>
+    <w:tbl>
+      <w:tr><w:tc><w:p><w:r><w:t>Department</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Key Objective</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Status</w:t></w:r></w:p></w:tc></w:tr>
+      <w:tr><w:tc><w:p><w:r><w:t>Cloud Infrastructure</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Zero-downtime migration</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Completed successfully</w:t></w:r></w:p></w:tc></w:tr>
+      <w:tr><w:tc><w:p><w:r><w:t>Customer Success</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>24/7 Support integration</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>In progress</w:t></w:r></w:p></w:tc></w:tr>
+    </w:tbl>
+  </w:body>
+</w:document>`;
+            zip.file('word/document.xml', sampleXml);
+            const blob = await zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+            processUploadedFile(new File([blob], `Quarterly_Report_${chatStore.counter}.docx`, { type: blob.type }));
+        }
+
+        async function loadSamplePdf() {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+
+            // Page 1
+            doc.setFillColor(241, 245, 249);
+            doc.rect(40, 40, 515, 70, 'F');
+            doc.setFontSize(18);
+            doc.setTextColor(15, 23, 42);
+            doc.text('Product Launch Strategy & Roadmap 2026', 60, 75);
+            doc.setFontSize(11);
+            doc.text('Confidential Executive Summary for Product & Engineering Teams', 60, 95);
+
+            doc.setFontSize(12);
+            doc.text('1. Executive Overview', 50, 150);
+            doc.setFontSize(10);
+            doc.text('Our primary objective this quarter is to accelerate customer onboarding while maintaining high', 50, 172);
+            doc.text('system reliability across all regional cloud clusters and mobile applications.', 50, 188);
+
+            // Table on Page 1
+            doc.setFillColor(226, 232, 240);
+            doc.rect(50, 220, 495, 28, 'F');
+            doc.setFontSize(10);
+            doc.text('Milestone Phase', 62, 238);
+            doc.text('Owner Team', 230, 238);
+            doc.text('Delivery Status', 400, 238);
+
+            const rows = [
+                ['Security Audit & Compliance', 'Core Infrastructure', 'Approved & Verified'],
+                ['Payment Gateway Upgrade', 'Fintech Checkout', 'Testing in Staging'],
+                ['Automated Hinglish Support', 'Customer Experience', 'Ready for Production']
+            ];
+            rows.forEach((r, idx) => {
+                const y = 250 + idx * 30;
+                doc.setDrawColor(203, 213, 225);
+                doc.rect(50, y, 495, 30);
+                doc.text(r[0], 62, y + 19);
+                doc.text(r[1], 230, y + 19);
+                doc.text(r[2], 400, y + 19);
+            });
+
+            // Page 2
+            doc.addPage('a4', 'p');
+            doc.setFillColor(239, 246, 255);
+            doc.rect(40, 40, 515, 60, 'F');
+            doc.setFontSize(16);
+            doc.text('Page 2: Regional Operations & Key Action Items', 60, 75);
+            doc.setFontSize(10);
+            doc.text('All regional managers must review the updated deployment checklist before Friday evening.', 50, 135);
+            doc.text('Please ensure backup servers are tested and customer support scripts are updated.', 50, 155);
+
+            const pdfBlob = doc.output('blob');
+            processUploadedFile(new File([pdfBlob], `Strategy_Roadmap_${chatStore.counter}.pdf`, { type: 'application/pdf' }));
+        }
+
+        function copyPythonCode() {
+            const codeText = document.getElementById('pythonCodeBlock').innerText;
+            const textarea = document.createElement('textarea');
+            textarea.value = codeText;
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textarea);
+            showToast('Python code copied to clipboard!', 'success');
+        }
+    </script>
+</body>
+</html>
